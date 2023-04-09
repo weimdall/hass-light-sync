@@ -1,9 +1,10 @@
 {
-    "api_endpoint": "http://<IP>:<PORT>",
+    "api_endpoint": "ws://<IP>:<PORT>/api/websocket",
     "light_entity_name": "light.[entity]",
-    "token": "LONG ACCESS TOKEN HERE",  
-    "grab_interval": 50,        
-    "skip_pixels": 10,          
-    "smoothing_factor": 0.0, 
-    "monitor_id": 0             
+    "token": "LONG ACCESS TOKEN HERE",
+    "transition": 0.0,
+    "grab_interval": 50,
+    "skip_pixels": 10,    
+    "smoothing_factor": 0.0,
+    "monitor_id": 0
 }

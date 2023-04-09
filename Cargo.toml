@@ -1,6 +1,6 @@
 [package]
 name = "hass-light-sync"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,3 +12,5 @@ captrs = "0.3.1"
 reqwest = { version = "0.11.6", features = ["json"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+hass-rs = {version = "0.2", features = ["tokio-runtime"] }
+url = "2.1"

@@ -6,14 +6,18 @@ extern crate reqwest;
 use captrs::*;
 use std::{time::Duration};
 use console::Emoji;
+use url::Url;
+use hass_rs::{client, HassClient};
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Serialize, Deserialize)]
 struct Settings {
     api_endpoint: String,
     light_entity_name: String,
     token: String,
+    transition: f32,
     grab_interval: i16,
     skip_pixels: i16,
     smoothing_factor: f32,
@@ -44,6 +48,40 @@ async fn main() {
 
     println!("{}Config loaded successfully!", Emoji("✅ ", ""));
 
+    println!("{}Connecting to HASS ... ", Emoji("💡 ", ""));
+    let mut client: HassClient;
+    let connect = client::connect_to_url(Url::parse(settings.api_endpoint.as_str()).unwrap()).await;
+    match connect {
+        Ok(_res_con) => {
+            // Connection succeed, let's authenticate
+            client = _res_con;
+            let _res_auth = client.auth_with_longlivedtoken(&*settings.token).await;
+            match _res_auth{
+                Ok(_res_auth) => {
+                    // Authentication succeed
+                    println!("{}Connected !", Emoji("✅ ", ""));
+                },
+                Err(e) => {
+                    // Authentication failed
+                    println!("{}Connection to Home Assistant failed: {}", Emoji("❌ ", ""), e);
+                    std::process::exit(0);
+                }
+            }
+        },
+        Err(e) => {
+            // Connection failed
+            println!("{}Connection to Home Assistant failed: {}", Emoji("❌ ", ""), e);
+            std::process::exit(0);
+        }
+    }
+
+    /*let tmp_avg_arr = vec![100, 0, 0];
+
+    // get the highest rgb component value -> brightness
+    let tmp_brightness = tmp_avg_arr.iter().max().unwrap();
+    send_rgb(&mut client, &settings, &tmp_avg_arr, tmp_brightness).await;
+    return;*/
+
     let steps = settings.skip_pixels as u64;
     let grab_interval = settings.grab_interval as u64;
     let smoothing_factor = settings.smoothing_factor;
@@ -56,9 +94,6 @@ async fn main() {
     // get the resolution of the monitor
     let (w, h) = capturer.geometry();
     let size = (w as u64 * h as u64) / steps;
-
-    // create http client
-    let client = reqwest::Client::new();
 
     let (mut prev_r, mut prev_g, mut prev_b) = (0, 0, 0);
     
@@ -117,12 +152,10 @@ async fn main() {
 
         let time_elapsed = last_timestamp.elapsed().as_millis();
         last_timestamp = std::time::Instant::now();
-
-        term.move_cursor_up(1);
         term.clear_line();
         println!("{}Current average color: {:?} - Brightness: {} - FPS: {}", Emoji("💡 ", ""), avg_arr, brightness, 1000 / time_elapsed);
         // println!("Avg Color: {:?}    Brightness: {}", avg_arr, brightness);
-        send_rgb(&client, &settings, &avg_arr, brightness).await;
+        send_rgb(&mut client, &settings, &avg_arr, brightness).await;
         std::thread::sleep(Duration::from_millis(grab_interval));
     }
 }
@@ -130,39 +163,26 @@ async fn main() {
 
 
 async fn send_rgb(
-    client: &reqwest::Client,
+    client: &mut HassClient,
     settings: &Settings,
     rgb_vec: &std::vec::Vec<u64>,
     brightness: &u64,
 ) {
-    let api_body = HASSApiBody {
-        entity_id: String::from(settings.light_entity_name.as_str()),
-        rgb_color: [rgb_vec[0], rgb_vec[1], rgb_vec[2]],
-        brightness: *brightness,
-    };
+    let api_body = json!({
+        "entity_id": String::from(settings.light_entity_name.as_str()),
+        "rgb_color": [rgb_vec[0], rgb_vec[1], rgb_vec[2]],
+        "brightness": *brightness,
+        "transition": settings.transition
+    });
 
-    let _response = client
-        .post(format!(
-            "{}/api/services/light/turn_on",
-            settings.api_endpoint.as_str()
-        ))
-        .header(
-            "Authorization",
-            format!("Bearer {}", settings.token).as_str(),
-        )
-        .json(&api_body)
-        .send()
-        .await;
-
-    match _response{
-        Ok(_res) => {
-            if _res.status() != 200 {
-                println!("{}Connection to Home Assistant failed: HTTP {}", Emoji("❌ ",""), _res.status());
-                std::process::exit(0);
-            }
-        },
-        Err(e) => {
-            println!("{}Connection to Home Assistant failed: {}", Emoji("❌ ", ""), e);
+    match client.call_service(
+        "light".to_owned(),
+        "turn_on".to_owned(),
+        Some(api_body)
+    ).await {
+        Ok(v) => (),
+        Err(err) => {
+            println!("{}Connection to Home Assistant failed: {}", Emoji("❌ ", ""), err);
             std::process::exit(0);
         }
     }
