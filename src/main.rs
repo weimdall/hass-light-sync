@@ -1,13 +1,13 @@
 #[allow(unused_must_use)]
 
 extern crate captrs;
-extern crate reqwest;
 
 use captrs::*;
 use std::{time::Duration};
 use console::Emoji;
 use url::Url;
-use hass_rs::{client, HassClient};
+use hass_rs::{client, HassClient, WSEvent};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,6 +16,7 @@ use serde_json::json;
 struct Settings {
     api_endpoint: String,
     light_entity_name: String,
+    trigger_entity_name: String,
     token: String,
     transition: f32,
     grab_interval: i16,
@@ -75,6 +76,29 @@ async fn main() {
         }
     }
 
+    let enable: Arc<Mutex<bool>> = Arc::new(Mutex::from(false));
+    let cl_enable = Arc::clone(&enable);
+    let cl_trigger_entity_name = settings.trigger_entity_name.clone();
+    let callback = move |item: WSEvent| {
+        if item.event.data.entity_id != cl_trigger_entity_name {
+            return;
+        }
+        let new_state: String;
+        match item.event.data.new_state {
+            Some(p) => new_state=p.state,
+            None => new_state="None".to_string(),
+        }
+
+        *cl_enable.lock().unwrap() = new_state == "on";
+        println!(
+        "Event : id {}, at {}, entity: {}, new_state: {}", item.id, item.event.time_fired, item.event.data.entity_id, new_state );
+    };
+    match client.subscribe_event("state_changed", callback).await {
+        Ok(v) => println!("{}Event subscribed : {}", Emoji("✅ ", ""), v),
+        Err(err) => println!("Oh no, an error: {}", err),
+    }
+
+
     /*let tmp_avg_arr = vec![100, 0, 0];
 
     // get the highest rgb component value -> brightness
@@ -102,6 +126,12 @@ async fn main() {
     let mut last_timestamp = std::time::Instant::now();
 
     loop {
+        // Lock enable variable and read the status (edited from closure above)
+        let enable = *enable.lock().unwrap();
+        if !enable {
+            std::thread::sleep(Duration::from_millis(500));
+            continue;
+        }
         // allocate a vector array for the pixels of the display
         let ps: Vec<Bgr8>;
 
@@ -180,7 +210,7 @@ async fn send_rgb(
         "turn_on".to_owned(),
         Some(api_body)
     ).await {
-        Ok(v) => (),
+        Ok(_v)=>(),
         Err(err) => {
             println!("{}Connection to Home Assistant failed: {}", Emoji("❌ ", ""), err);
             std::process::exit(0);

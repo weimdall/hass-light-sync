@@ -1,6 +1,7 @@
 {
     "api_endpoint": "ws://<IP>:<PORT>/api/websocket",
     "light_entity_name": "light.[entity]",
+    "trigger_entity_name": "input_boolean.[entity]",
     "token": "LONG ACCESS TOKEN HERE",
     "transition": 0.0,
     "grab_interval": 50,
